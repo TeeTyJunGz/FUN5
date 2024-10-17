@@ -8,8 +8,6 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy
 from rclpy.node import Node
 from scipy.constants import g
 from sensor_msgs.msg import Imu
-from rcl_interfaces.msg import SetParametersResult
-from ament_index_python import get_package_share_directory
 
 class IMUNode(Node):
     def __init__(self):
@@ -34,22 +32,13 @@ class IMUNode(Node):
         
         self.file_path = 'imu_config/' + self.file_name
         
-        # self.create_timer(1/self.frequency, self.timer_callback)
-        self.add_on_set_parameters_callback(self.set_param_callback)
-
-    def set_param_callback(self, params):
-        for param in params:
-            if param.name == 'file_name':
-                self.get_logger().info(f'Updated file_name: {param.value}')
-                self.file_name = param.value
-            elif param.name == 'frequency':
-                self.get_logger().info(f'Updated frequency: {param.value}')
-                self.frequency = param.value
-            else:
-                self.get_logger().warn(f'Unknown parameter: {param.name}')
-                return SetParametersResult(successful=False, reason=f'Unknown parameter: {param.name}')
-        return SetParametersResult(successful=True)
-    
+        self.createYAML()
+        
+    def createYAML(self):
+        empty_data = {}
+        with open(self.file_path, 'w') as file:
+            yaml.dump(empty_data, file)
+            
     def loadYAML(self):
         with open(self.file_path, 'r') as file:
             data = yaml.safe_load(file) or {}
@@ -86,6 +75,7 @@ class IMUNode(Node):
                 msg.angular_velocity.y,
                 msg.angular_velocity.z
             ])
+            print('Collect Data: ' + str(self.imu_n))
         else:
             accl_array = np.array(self.accl_list)
             accl_covr = np.absolute(np.cov(accl_array.T)) 
@@ -96,8 +86,16 @@ class IMUNode(Node):
             gyro_offset = np.mean(gyro_array, 0)
 
             self.save_calibration(accl_offset, accl_covr, 'accl')
-            self.save_calibration(gyro_offset, gyro_covr, 'covr')
-            
+            self.save_calibration(gyro_offset, gyro_covr, 'gyro')
+            print('========================')
+            print('Finished Collecting Data')
+            print('========================')
+            print(accl_offset)
+            print(accl_covr)
+            print('========================')
+            print(gyro_offset)
+            print(gyro_covr)
+            print('Exiting Program...')
             exit()
             
 def main(args=None):
