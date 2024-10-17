@@ -14,7 +14,7 @@ class ImuBridgeNode(Node):
         super().__init__('imu_bridge_node')
         self.declare_parameter('file_name', 'imu_calibration.yaml')
         
-        self.calib_client = self.create_client(ImuCalibration, 'mpu6050_calibration')
+        self.calib_client = self.create_client(ImuCalibration, 'imu_calibration')
         
         while not self.calib_client.wait_for_service(timeout_sec=1.0):
             print("waiting.. for service")
