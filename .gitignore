@@ -1,0 +1,5 @@
+# ignore ALL files in ANY directory named temp
+build/
+install/
+log/
+src/robotics_model_3dof/scripts/3DOF_workspace.py
