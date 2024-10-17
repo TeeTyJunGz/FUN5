@@ -1,6 +1,6 @@
 [submodule "G474RE-MPU6050/micro_ros_stm32cubemx_utils"]
 	path = G474RE-MPU6050/micro_ros_stm32cubemx_utils
-	url = https://github.com/micro-ROS/micro_ros_stm32cubemx_utils/tree/humble
+	url = https://github.com/micro-ROS/micro_ros_stm32cubemx_utils
 [submodule "G474RE-MPU6050/MPU6050"]
 	path = G474RE-MPU6050/MPU6050
 	url = https://github.com/leech001/MPU6050
