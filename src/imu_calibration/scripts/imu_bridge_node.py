@@ -12,8 +12,10 @@ from ament_index_python import get_package_share_directory
 class ImuBridgeNode(Node):
     def __init__(self):
         super().__init__('imu_bridge_node')
-        self.declare_parameter('file_name', 'imu_calibration.yaml')
         
+        self.declare_parameter('file_name', 'imu_calibration.yaml')
+        self.file_name = self.get_parameter('file_name').get_parameter_value().string_value
+
         self.calib_client = self.create_client(ImuCalibration, 'imu_calibration')
         
         while not self.calib_client.wait_for_service(timeout_sec=1.0):

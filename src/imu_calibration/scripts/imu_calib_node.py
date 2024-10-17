@@ -14,10 +14,7 @@ class IMUNode(Node):
         super().__init__('imu_calib_node')
         
         self.declare_parameter('file_name', 'imu_calibration.yaml')
-        self.declare_parameter('frequency', 100.0)
-        
         self.file_name = self.get_parameter('file_name').get_parameter_value().string_value
-        self.frequency = self.get_parameter('frequency').get_parameter_value().double_value
 
         qosProfile = QoSProfile(
             reliability = ReliabilityPolicy.BEST_EFFORT,
