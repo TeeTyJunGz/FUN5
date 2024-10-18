@@ -195,15 +195,22 @@ void calculate_accl_angles(double Ax, double Ay, double Az, double Gx, double Gy
 
 void calculate_kalm_angles(double Ax, double Ay, double Az, double Gx, double Gy, double Gz, float DT) {
 
-	double angleX = atan(Ay/ sqrt(Ax * Ax + Az * Az)) * RAD_TO_DEG;
-	double angleY = atan2(-Ax, Az) * RAD_TO_DEG;
+	double angleX = atan(Ay / sqrt(Ax * Ax + Az * Az)) * RAD_TO_DEG;
+	double angleY = atan2(-Ax, sqrt(Ay * Ay + Az * Az)) * RAD_TO_DEG;
 
 	double ratedX = Gx;
 	double ratedY = Gy;
 
 	rotation_kalm.roll = Kalman_Angle(&kalmanX, angleX, ratedX, DT);
 	rotation_kalm.pitch = Kalman_Angle(&kalmanY, angleY, ratedY, DT);
-	rotation_kalm.yaw += Gz * DT;
+	rotation_kalm.yaw += (Gz * RAD_TO_DEG) * DT;
+
+    if (rotation_kalm.yaw > 180.0){
+    	rotation_kalm.yaw -= 360.0;
+    }
+    else if (rotation_kalm.yaw < -180.0){
+    	rotation_kalm.yaw += 360.0;
+    }
 }
 
 void Kalman_Init(KalmanFilter_t* kf) {
@@ -287,6 +294,13 @@ void timer_callback(rcl_timer_t * timer, int64_t last_call_time)
 				calculate_gyro_angles(Ax/GRAVITY, Ay/GRAVITY, Az/GRAVITY, Gx, Gy, Gz, 0.01);
 				calculate_accl_angles(Ax/GRAVITY, Ay/GRAVITY, Az/GRAVITY, Gx, Gy, Gz, 0.01);
 				calculate_kalm_angles(Ax/GRAVITY, Ay/GRAVITY, Az/GRAVITY, Gx, Gy, Gz, 0.01);
+
+				cmd_vel_msg.linear.x = rotation_kalm.roll * DEG_TO_RAD;
+				cmd_vel_msg.angular.z = -(rotation_kalm.pitch * DEG_TO_RAD);
+
+				rcl_ret_t rett = rcl_publish(&cmd_vel_publisher, &cmd_vel_msg, NULL);
+				if (rett != RCL_RET_OK) printf("Error publishing (line %d)\n", __LINE__);
+
 			}
 		}
 		else
