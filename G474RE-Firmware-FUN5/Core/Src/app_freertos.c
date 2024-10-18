@@ -67,6 +67,18 @@ typedef struct {
 	double pitch;
 	double yaw;
 } rotation_t;
+
+typedef struct {
+	double Q_angle;
+	double Q_bias;
+	double R_measure;
+
+	double angle;
+	double bias;
+	double rate;
+
+	double P[2][2];
+} KalmanFilter_t;
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -109,7 +121,10 @@ offset3d_t gyro_offset;
 
 rotation_t rotation_gyro;
 rotation_t rotation_accl;
+rotation_t rotation_kalm;
 rotation_t rotation_real;
+
+KalmanFilter_t kalmanX, kalmanY;
 
 bool is_calib = false;
 bool on_calib = false;
@@ -141,6 +156,10 @@ void * microros_zero_allocate(size_t number_of_elements, size_t size_of_element,
 
 void calculate_gyro_angles(double Ax, double Ay, double Az, double Gx, double Gy, double Gz, float DT);
 void calculate_accl_angles(double Ax, double Ay, double Az, double Gx, double Gy, double Gz, float DT);
+void calculate_kalm_angles(double Ax, double Ay, double Az, double Gx, double Gy, double Gz, float DT);
+
+void Kalman_Init(KalmanFilter_t* kf);
+double Kalman_Angle(KalmanFilter_t* kf, double new_angle, double new_rate, float DT);
 
 void calculate_gyro_angles(double Ax, double Ay, double Az, double Gx, double Gy, double Gz, float DT) {
 
@@ -162,7 +181,6 @@ void calculate_accl_angles(double Ax, double Ay, double Az, double Gx, double Gy
     double pitch_acc = atan2(-Ax, sqrt(Ay * Ay + Az * Az)) * RAD_TO_DEG;
     double yaw_acc = (Gz * RAD_TO_DEG) * DT;
 
-
     rotation_accl.roll = roll_acc;
     rotation_accl.pitch = pitch_acc;
     rotation_accl.yaw += yaw_acc;
@@ -173,6 +191,63 @@ void calculate_accl_angles(double Ax, double Ay, double Az, double Gx, double Gy
     else if (rotation_accl.yaw < -180.0){
     	rotation_accl.yaw += 360.0;
     }
+}
+
+void calculate_kalm_angles(double Ax, double Ay, double Az, double Gx, double Gy, double Gz, float DT) {
+
+	double angleX = atan(Ay/ sqrt(Ax * Ax + Az * Az)) * RAD_TO_DEG;
+	double angleY = atan2(-Ax, Az) * RAD_TO_DEG;
+
+	double ratedX = Gx;
+	double ratedY = Gy;
+
+	rotation_kalm.roll = Kalman_Angle(&kalmanX, angleX, ratedX, DT);
+	rotation_kalm.pitch = Kalman_Angle(&kalmanY, angleY, ratedY, DT);
+	rotation_kalm.yaw += Gz * DT;
+}
+
+void Kalman_Init(KalmanFilter_t* kf) {
+    kf->Q_angle = 0.001f;
+    kf->Q_bias  = 0.003f;
+    kf->R_measure = 0.03f;
+
+    kf->angle = 0.0f;
+    kf->bias = 0.0f;
+
+    kf->P[0][0] = 0.0f;
+    kf->P[0][1] = 0.0f;
+    kf->P[1][0] = 0.0f;
+    kf->P[1][1] = 0.0f;
+}
+
+double Kalman_Angle(KalmanFilter_t* kf, double new_angle, double new_rate, float DT){
+
+    kf->rate = new_rate - kf->bias;
+    kf->angle += DT * kf->rate;
+
+    kf->P[0][0] += DT * (DT * kf->P[1][1] - kf->P[0][1] - kf->P[1][0] + kf->Q_angle);
+    kf->P[0][1] -= DT * kf->P[1][1];
+    kf->P[1][0] -= DT * kf->P[1][1];
+    kf->P[1][1] += kf->Q_bias * DT;
+
+    double S = kf->P[0][0] + kf->R_measure;
+    double K[2];
+    K[0] = kf->P[0][0] / S;
+    K[1] = kf->P[1][0] / S;
+
+    double y = new_angle - kf->angle;
+    kf->angle += K[0] * y;
+    kf->bias += K[1] * y;
+
+    double P00_temp = kf->P[0][0];
+    double P01_temp = kf->P[0][1];
+
+    kf->P[0][0] -= K[0] * P00_temp;
+    kf->P[0][1] -= K[0] * P01_temp;
+    kf->P[1][0] -= K[1] * P00_temp;
+    kf->P[1][1] -= K[1] * P01_temp;
+
+    return kf->angle;
 }
 
 void timer_callback(rcl_timer_t * timer, int64_t last_call_time)
@@ -211,6 +286,7 @@ void timer_callback(rcl_timer_t * timer, int64_t last_call_time)
 
 				calculate_gyro_angles(Ax/GRAVITY, Ay/GRAVITY, Az/GRAVITY, Gx, Gy, Gz, 0.01);
 				calculate_accl_angles(Ax/GRAVITY, Ay/GRAVITY, Az/GRAVITY, Gx, Gy, Gz, 0.01);
+				calculate_kalm_angles(Ax/GRAVITY, Ay/GRAVITY, Az/GRAVITY, Gx, Gy, Gz, 0.01);
 			}
 		}
 		else
@@ -298,6 +374,8 @@ void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
 void MX_FREERTOS_Init(void) {
   /* USER CODE BEGIN Init */
   while (MPU6050_Init(&hi2c1) == 1);
+  Kalman_Init(&kalmanX);
+  Kalman_Init(&kalmanY);
   /* USER CODE END Init */
 
   /* USER CODE BEGIN RTOS_MUTEX */
