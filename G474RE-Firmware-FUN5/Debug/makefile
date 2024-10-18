@@ -16,6 +16,7 @@ RM := rm -rf
 -include MPU6050/Src/subdir.mk
 -include Drivers/STM32G4xx_HAL_Driver/Src/subdir.mk
 -include Core/Startup/subdir.mk
+-include Core/Src/microros_transports/subdir.mk
 -include Core/Src/subdir.mk
 -include objects.mk
 

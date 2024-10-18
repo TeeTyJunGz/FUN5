@@ -1,2 +1,4 @@
-../Core/Src/app_freertos.c:102:6:MX_FREERTOS_Init	8	static
-../Core/Src/app_freertos.c:144:6:StartDefaultTask	16	static
+../Core/Src/app_freertos.c:124:6:timer_callback	32	static
+../Core/Src/app_freertos.c:156:6:imu_calib_service_callback	32	static
+../Core/Src/app_freertos.c:193:6:MX_FREERTOS_Init	8	static
+../Core/Src/app_freertos.c:235:6:StartDefaultTask	464	static
