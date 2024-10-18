@@ -1,4 +1,5 @@
-../Core/Src/app_freertos.c:124:6:timer_callback	5
-../Core/Src/app_freertos.c:156:6:imu_calib_service_callback	1
-../Core/Src/app_freertos.c:193:6:MX_FREERTOS_Init	2
-../Core/Src/app_freertos.c:235:6:StartDefaultTask	4
+../Core/Src/app_freertos.c:132:6:timer_callback	7
+../Core/Src/app_freertos.c:178:6:imu_calib_service_callback	1
+../Core/Src/app_freertos.c:205:6:imu_status_service_callback	3
+../Core/Src/app_freertos.c:242:6:MX_FREERTOS_Init	2
+../Core/Src/app_freertos.c:284:6:StartDefaultTask	4

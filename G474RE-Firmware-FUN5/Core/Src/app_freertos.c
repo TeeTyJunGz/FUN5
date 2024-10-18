@@ -47,6 +47,7 @@
 #include <sensor_msgs/msg/imu.h>
 #include <geometry_msgs/msg/twist.h>
 
+#include <std_srvs/srv/set_bool.h>
 #include <imu_interfaces/srv/imu_calibration.h>
 
 #include <micro_ros_utilities/string_utilities.h>
@@ -87,8 +88,15 @@ rcl_service_t imu_calibration_server;
 imu_interfaces__srv__ImuCalibration_Request imu_calibration_request;
 imu_interfaces__srv__ImuCalibration_Response imu_calibration_response;
 
+rcl_service_t imu_status_server;
+std_srvs__srv__SetBool_Request imu_status_request;
+std_srvs__srv__SetBool_Response imu_status_response;
+
 MPU6050_t MPU6050;
 uint16_t cc = 0;
+uint16_t cs = 0;
+uint16_t ct = 0;
+uint32_t i2cError;
 
 offset3d_t accl_offset;
 offset3d_t gyro_offset;
@@ -125,27 +133,41 @@ void timer_callback(rcl_timer_t * timer, int64_t last_call_time)
 {
 
 	if (timer != NULL) {
-		if (is_calib || on_calib){
-			MPU6050_Read_All(&hi2c1, &MPU6050);
+		uint32_t i2ccError = HAL_I2C_GetError(&hi2c1);
+		if (i2ccError == HAL_I2C_ERROR_NONE){
+			if (is_calib || on_calib){
+				MPU6050_Read_All(&hi2c1, &MPU6050);
 
-			mpu6050_msg.header.stamp.sec = rmw_uros_epoch_millis() / 1000;
-			mpu6050_msg.header.stamp.nanosec = rmw_uros_epoch_nanos();
+				mpu6050_msg.header.stamp.sec = rmw_uros_epoch_millis() / 1000;
+				mpu6050_msg.header.stamp.nanosec = rmw_uros_epoch_nanos();
 
-			mpu6050_msg.linear_acceleration.x = (GRAVITY * MPU6050.Ax) - accl_offset.x;
-			mpu6050_msg.linear_acceleration.y = (GRAVITY * MPU6050.Ay) - accl_offset.y;
-			mpu6050_msg.linear_acceleration.z = (GRAVITY * MPU6050.Az) - accl_offset.z;
+				mpu6050_msg.linear_acceleration.x = (GRAVITY * MPU6050.Ax) - accl_offset.x;
+				mpu6050_msg.linear_acceleration.y = (GRAVITY * MPU6050.Ay) - accl_offset.y;
+				mpu6050_msg.linear_acceleration.z = (GRAVITY * MPU6050.Az) - accl_offset.z;
 
-			mpu6050_msg.angular_velocity.x = (DEG_TO_RAD * MPU6050.Gx) - gyro_offset.x;
-			mpu6050_msg.angular_velocity.y = (DEG_TO_RAD * MPU6050.Gy) - gyro_offset.y;
-			mpu6050_msg.angular_velocity.z = (DEG_TO_RAD * MPU6050.Gz) - gyro_offset.z;
+				mpu6050_msg.angular_velocity.x = (DEG_TO_RAD * MPU6050.Gx) - gyro_offset.x;
+				mpu6050_msg.angular_velocity.y = (DEG_TO_RAD * MPU6050.Gy) - gyro_offset.y;
+				mpu6050_msg.angular_velocity.z = (DEG_TO_RAD * MPU6050.Gz) - gyro_offset.z;
 
-			rcl_ret_t ret = rcl_publish(&mpu6050_publisher, &mpu6050_msg, NULL);
+				rcl_ret_t ret = rcl_publish(&mpu6050_publisher, &mpu6050_msg, NULL);
 
-			if (ret != RCL_RET_OK)
-			{
-			  printf("Error publishing (line %d)\n", __LINE__);
+				if (ret != RCL_RET_OK)
+				{
+				  printf("Error publishing (line %d)\n", __LINE__);
+				}
+
 			}
-
+		}
+		else
+		{
+			static uint32_t timestamp = 0;
+			if (timestamp <= HAL_GetTick()){
+				timestamp = HAL_GetTick() + 1000;
+				HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
+				HAL_I2C_DeInit(&hi2c1);
+				HAL_I2C_Init(&hi2c1);
+				MPU6050_Init(&hi2c1);
+			}
 		}
 
 	    HAL_IWDG_Refresh(&hiwdg);
@@ -177,6 +199,33 @@ void imu_calib_service_callback(const void * request_msg, void * response_msg){
   res_in->success = true;
 
   HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
+
+}
+
+void imu_status_service_callback(const void * request_msg, void * response_msg){
+  // Cast messages to expected types
+  std_srvs__srv__SetBool_Request * req_in =
+    (std_srvs__srv__SetBool_Request *) request_msg;
+  std_srvs__srv__SetBool_Response * res_in =
+    (std_srvs__srv__SetBool_Response *) response_msg;
+
+  if (req_in->data){
+	  i2cError = HAL_I2C_GetError(&hi2c1);
+	  if (i2cError == HAL_I2C_ERROR_NONE) {
+	      res_in->success = true;
+	      res_in->message.data = "MPU6050 is connected.";
+		  cs++;
+	  }
+	  else {
+	      res_in->success = false;
+	      res_in->message.data = "MPU6050 is not connect, Error with I2C interfaces.";
+		  ct++;
+	  }
+  }
+  else{
+      res_in->success = false;
+      res_in->message.data = "Request false.";
+  }
 
 }
 /* USER CODE END FunctionPrototypes */
@@ -265,8 +314,8 @@ void StartDefaultTask(void *argument)
 	rcl_init_options_t init_options;
 
 	const unsigned int timer_period = RCL_MS_TO_NS(10);
-	const int timeout_ms = 1000;
-	int executor_num = 1;
+	const int timeout_ms = 5000;
+	int executor_num = 2;
 
 	// Get message type support
 	const rosidl_message_type_support_t * imu_type_support =
@@ -277,6 +326,9 @@ void StartDefaultTask(void *argument)
 
 	const rosidl_service_type_support_t * imu_calib_type_support =
 	  ROSIDL_GET_SRV_TYPE_SUPPORT(imu_interfaces, srv, ImuCalibration);
+
+	const rosidl_service_type_support_t * imu_status_type_support =
+	  ROSIDL_GET_SRV_TYPE_SUPPORT(std_srvs, srv, SetBool);
 
 	allocator = rcl_get_default_allocator();
 
@@ -311,6 +363,8 @@ void StartDefaultTask(void *argument)
 	else{
 		on_calib = true;
 	}
+
+	rclc_service_init_default(&imu_status_server, &node, imu_status_type_support, "/imu/status");
 	//create service client
 
 
@@ -319,6 +373,7 @@ void StartDefaultTask(void *argument)
 
 	rclc_executor_add_timer(&executor, &mpu6050_timer);
 	if (B1 == GPIO_PIN_RESET) rclc_executor_add_service(&executor, &imu_calibration_server, &imu_calibration_request, &imu_calibration_response, imu_calib_service_callback);
+	rclc_executor_add_service(&executor, &imu_status_server, &imu_status_request, &imu_status_response, imu_status_service_callback);
 
 	rclc_executor_spin(&executor);
 
