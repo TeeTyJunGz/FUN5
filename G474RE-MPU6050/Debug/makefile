@@ -67,8 +67,8 @@ all:
 main-build: G474RE-MPU6050.elf secondary-outputs
 
 # Tool invocations
-G474RE-MPU6050.elf G474RE-MPU6050.map: $(OBJS) $(USER_OBJS) /home/teety/STM32CubeIDE/workspace_1.16.0/G474RE-MPU6050/STM32G474RETX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-gcc -o "G474RE-MPU6050.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m4 -T"/home/teety/STM32CubeIDE/workspace_1.16.0/G474RE-MPU6050/STM32G474RETX_FLASH.ld" --specs=nosys.specs -Wl,-Map="G474RE-MPU6050.map" -Wl,--gc-sections -static -L../micro_ros_stm32cubemx_utils/microros_static_library_ide/libmicroros --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
+G474RE-MPU6050.elf G474RE-MPU6050.map: $(OBJS) $(USER_OBJS) /home/teety/GitHub/FUN5/G474RE-MPU6050/STM32G474RETX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
+	arm-none-eabi-gcc -o "G474RE-MPU6050.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m4 -T"/home/teety/GitHub/FUN5/G474RE-MPU6050/STM32G474RETX_FLASH.ld" --specs=nosys.specs -Wl,-Map="G474RE-MPU6050.map" -Wl,--gc-sections -static -L../micro_ros_stm32cubemx_utils/microros_static_library_ide/libmicroros --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
 	@echo 'Finished building target: $@'
 	@echo ' '
 
@@ -88,7 +88,7 @@ clean:
 	-@echo ' '
 
 pre-build:
-	echo "ubuntu" | sudo -S docker pull microros/micro_ros_static_library_builder:humble && echo "ubuntu" | sudo -S docker run --rm -v /home/teety/STM32CubeIDE/workspace_1.16.0/G474RE-MPU6050:/project --env MICROROS_LIBRARY_FOLDER=micro_ros_stm32cubemx_utils/microros_static_library_ide microros/micro_ros_static_library_builder:humble
+	echo "ubuntu" | sudo -S docker pull microros/micro_ros_static_library_builder:humble && echo "ubuntu" | sudo -S docker run --rm -v /home/teety/GitHub/FUN5/G474RE-MPU6050:/project --env MICROROS_LIBRARY_FOLDER=micro_ros_stm32cubemx_utils/microros_static_library_ide microros/micro_ros_static_library_builder:humble
 	-@echo ' '
 
 secondary-outputs: $(SIZE_OUTPUT) $(OBJDUMP_LIST)
