@@ -45,7 +45,6 @@
 
 #include <std_msgs/msg/int32.h>
 #include <sensor_msgs/msg/imu.h>
-#include <geometry_msgs/msg/twist.h>
 
 #include <imu_interfaces/srv/imu_calibration.h>
 
@@ -79,9 +78,6 @@ rcl_node_t node;
 
 rcl_publisher_t mpu6050_publisher;
 sensor_msgs__msg__Imu mpu6050_msg;
-
-rcl_publisher_t cmd_vel_publisher;
-geometry_msgs__msg__Twist cmd_vel_msg;
 
 rcl_service_t imu_calibration_server;
 imu_interfaces__srv__ImuCalibration_Request imu_calibration_request;
@@ -272,9 +268,6 @@ void StartDefaultTask(void *argument)
 	const rosidl_message_type_support_t * imu_type_support =
 	  ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, Imu);
 
-	const rosidl_message_type_support_t * cmd_type_support =
-	  ROSIDL_GET_MSG_TYPE_SUPPORT(geometry_msgs, msg, Twist);
-
 	const rosidl_service_type_support_t * imu_calib_type_support =
 	  ROSIDL_GET_SRV_TYPE_SUPPORT(imu_interfaces, srv, ImuCalibration);
 
@@ -298,7 +291,6 @@ void StartDefaultTask(void *argument)
 
 	// create publisher
 	rclc_publisher_init_best_effort(&mpu6050_publisher, &node, imu_type_support, "mpu6050_publisher");
-	rclc_publisher_init_default(&cmd_vel_publisher, &node, cmd_type_support, "cmd_vel");
 
 	//create subscriber
 
