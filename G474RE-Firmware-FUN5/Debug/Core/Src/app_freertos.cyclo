@@ -1,5 +1,7 @@
-../Core/Src/app_freertos.c:132:6:timer_callback	7
-../Core/Src/app_freertos.c:178:6:imu_calib_service_callback	1
-../Core/Src/app_freertos.c:205:6:imu_status_service_callback	3
-../Core/Src/app_freertos.c:242:6:MX_FREERTOS_Init	2
-../Core/Src/app_freertos.c:284:6:StartDefaultTask	4
+../Core/Src/app_freertos.c:145:6:calculate_gyro_angles	3
+../Core/Src/app_freertos.c:159:6:calculate_accl_angles	3
+../Core/Src/app_freertos.c:178:6:timer_callback	7
+../Core/Src/app_freertos.c:233:6:imu_calib_service_callback	1
+../Core/Src/app_freertos.c:260:6:imu_status_service_callback	3
+../Core/Src/app_freertos.c:298:6:MX_FREERTOS_Init	2
+../Core/Src/app_freertos.c:340:6:StartDefaultTask	4

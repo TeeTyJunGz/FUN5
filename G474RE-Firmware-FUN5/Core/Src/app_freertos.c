@@ -61,12 +61,19 @@ typedef struct {
 	double y;
 	double z;
 } offset3d_t;
+
+typedef struct {
+	double roll;
+	double pitch;
+	double yaw;
+} rotation_t;
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 #define GRAVITY 9.80665
 #define DEG_TO_RAD M_PI / 180.0
+#define RAD_TO_DEG 180.0 / M_PI
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -96,10 +103,13 @@ MPU6050_t MPU6050;
 uint16_t cc = 0;
 uint16_t cs = 0;
 uint16_t ct = 0;
-uint32_t i2cError;
 
 offset3d_t accl_offset;
 offset3d_t gyro_offset;
+
+rotation_t rotation_gyro;
+rotation_t rotation_accl;
+rotation_t rotation_real;
 
 bool is_calib = false;
 bool on_calib = false;
@@ -129,33 +139,78 @@ void microros_deallocate(void * pointer, void * state);
 void * microros_reallocate(void * pointer, size_t size, void * state);
 void * microros_zero_allocate(size_t number_of_elements, size_t size_of_element, void * state);
 
+void calculate_gyro_angles(double Ax, double Ay, double Az, double Gx, double Gy, double Gz, float DT);
+void calculate_accl_angles(double Ax, double Ay, double Az, double Gx, double Gy, double Gz, float DT);
+
+void calculate_gyro_angles(double Ax, double Ay, double Az, double Gx, double Gy, double Gz, float DT) {
+
+	rotation_gyro.roll += (Gx * RAD_TO_DEG) * DT;
+	rotation_gyro.pitch += (Gy * RAD_TO_DEG) * DT;
+	rotation_gyro.yaw += (Gz * RAD_TO_DEG) * DT;
+
+    if (rotation_gyro.yaw > 180.0){
+    	rotation_gyro.yaw -= 360.0;
+    }
+    else if (rotation_gyro.yaw < -180.0){
+    	rotation_gyro.yaw += 360.0;
+    }
+}
+
+void calculate_accl_angles(double Ax, double Ay, double Az, double Gx, double Gy, double Gz, float DT) {
+
+    double roll_acc = atan2(Ay, Az) * RAD_TO_DEG;
+    double pitch_acc = atan2(-Ax, sqrt(Ay * Ay + Az * Az)) * RAD_TO_DEG;
+    double yaw_acc = (Gz * RAD_TO_DEG) * DT;
+
+
+    rotation_accl.roll = roll_acc;
+    rotation_accl.pitch = pitch_acc;
+    rotation_accl.yaw += yaw_acc;
+
+    if (rotation_accl.yaw > 180.0){
+    	rotation_accl.yaw -= 360.0;
+    }
+    else if (rotation_accl.yaw < -180.0){
+    	rotation_accl.yaw += 360.0;
+    }
+}
+
 void timer_callback(rcl_timer_t * timer, int64_t last_call_time)
 {
 
 	if (timer != NULL) {
-		uint32_t i2ccError = HAL_I2C_GetError(&hi2c1);
-		if (i2ccError == HAL_I2C_ERROR_NONE){
+		uint32_t i2cError = HAL_I2C_GetError(&hi2c1);
+		if (i2cError == HAL_I2C_ERROR_NONE){
 			if (is_calib || on_calib){
 				MPU6050_Read_All(&hi2c1, &MPU6050);
+
+				double Ax = (GRAVITY * MPU6050.Ax) - accl_offset.x;
+				double Ay = (GRAVITY * MPU6050.Ay) - accl_offset.y;
+				double Az = (GRAVITY * MPU6050.Az) - accl_offset.z;
+
+				double Gx = (DEG_TO_RAD * MPU6050.Gx) - gyro_offset.x;
+				double Gy = (DEG_TO_RAD * MPU6050.Gy) - gyro_offset.y;
+				double Gz = (DEG_TO_RAD * MPU6050.Gz) - gyro_offset.z;
 
 				mpu6050_msg.header.stamp.sec = rmw_uros_epoch_millis() / 1000;
 				mpu6050_msg.header.stamp.nanosec = rmw_uros_epoch_nanos();
 
-				mpu6050_msg.linear_acceleration.x = (GRAVITY * MPU6050.Ax) - accl_offset.x;
-				mpu6050_msg.linear_acceleration.y = (GRAVITY * MPU6050.Ay) - accl_offset.y;
-				mpu6050_msg.linear_acceleration.z = (GRAVITY * MPU6050.Az) - accl_offset.z;
+				mpu6050_msg.linear_acceleration.x = Ax;
+				mpu6050_msg.linear_acceleration.y = Ay;
+				mpu6050_msg.linear_acceleration.z = Az;
 
-				mpu6050_msg.angular_velocity.x = (DEG_TO_RAD * MPU6050.Gx) - gyro_offset.x;
-				mpu6050_msg.angular_velocity.y = (DEG_TO_RAD * MPU6050.Gy) - gyro_offset.y;
-				mpu6050_msg.angular_velocity.z = (DEG_TO_RAD * MPU6050.Gz) - gyro_offset.z;
+				mpu6050_msg.angular_velocity.x = Gx;
+				mpu6050_msg.angular_velocity.y = Gy;
+				mpu6050_msg.angular_velocity.z = Gz;
 
 				rcl_ret_t ret = rcl_publish(&mpu6050_publisher, &mpu6050_msg, NULL);
+				if (ret != RCL_RET_OK) printf("Error publishing (line %d)\n", __LINE__);
 
-				if (ret != RCL_RET_OK)
-				{
-				  printf("Error publishing (line %d)\n", __LINE__);
-				}
+				rotation_real.roll = MPU6050.KalmanAngleX;
+				rotation_real.pitch = MPU6050.KalmanAngleY;
 
+				calculate_gyro_angles(Ax/GRAVITY, Ay/GRAVITY, Az/GRAVITY, Gx, Gy, Gz, 0.01);
+				calculate_accl_angles(Ax/GRAVITY, Ay/GRAVITY, Az/GRAVITY, Gx, Gy, Gz, 0.01);
 			}
 		}
 		else
@@ -210,7 +265,7 @@ void imu_status_service_callback(const void * request_msg, void * response_msg){
     (std_srvs__srv__SetBool_Response *) response_msg;
 
   if (req_in->data){
-	  i2cError = HAL_I2C_GetError(&hi2c1);
+	  uint32_t i2cError = HAL_I2C_GetError(&hi2c1);
 	  if (i2cError == HAL_I2C_ERROR_NONE) {
 	      res_in->success = true;
 	      res_in->message.data = "MPU6050 is connected.";
@@ -228,6 +283,7 @@ void imu_status_service_callback(const void * request_msg, void * response_msg){
   }
 
 }
+
 /* USER CODE END FunctionPrototypes */
 
 void StartDefaultTask(void *argument);
@@ -364,7 +420,7 @@ void StartDefaultTask(void *argument)
 		on_calib = true;
 	}
 
-	rclc_service_init_default(&imu_status_server, &node, imu_status_type_support, "/imu/status");
+	rclc_service_init_default(&imu_status_server, &node, imu_status_type_support, "imu/status");
 	//create service client
 
 
