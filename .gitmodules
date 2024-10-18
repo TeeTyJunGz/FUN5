@@ -4,3 +4,6 @@
 [submodule "G474RE-MPU6050/MPU6050"]
 	path = G474RE-MPU6050/MPU6050
 	url = https://github.com/leech001/MPU6050
+[submodule "src/megarover_samples_ros2"]
+	path = src/megarover_samples_ros2
+	url = https://github.com/atinfinity/megarover_samples_ros2
