@@ -10,3 +10,6 @@
 [submodule "G474RE-Firmware-FUN5/micro_ros_stm32cubemx_utils"]
 	path = G474RE-Firmware-FUN5/micro_ros_stm32cubemx_utils
 	url = https://github.com/TeeTyJunGz/micro_ros_stm32cubemx_utils_imu
+[submodule "G474RE-Firmware-FUN5/MPU6050"]
+	path = G474RE-Firmware-FUN5/MPU6050
+	url = https://github.com/leech001/MPU6050
