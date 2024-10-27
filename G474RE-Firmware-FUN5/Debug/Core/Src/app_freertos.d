@@ -27,6 +27,9 @@ Core/Src/app_freertos.o: ../Core/Src/app_freertos.c \
  ../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_dma.h \
  ../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_dma_ex.h \
  ../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_cortex.h \
+ ../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_adc.h \
+ ../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_ll_adc.h \
+ ../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_adc_ex.h \
  ../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_exti.h \
  ../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_flash.h \
  ../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_flash_ex.h \
@@ -44,7 +47,7 @@ Core/Src/app_freertos.o: ../Core/Src/app_freertos.c \
  ../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2/cmsis_os2.h \
  ../Core/Inc/dma.h ../Core/Inc/main.h ../Core/Inc/i2c.h \
  ../Core/Inc/iwdg.h ../Core/Inc/gpio.h ../Core/Inc/usart.h \
- ../MPU6050/Src/mpu6050.h \
+ ../Core/Inc/adc.h ../MPU6050/Src/mpu6050.h \
  ../micro_ros_stm32cubemx_utils/microros_static_library_ide/libmicroros/include/rcl/rcl.h \
  ../micro_ros_stm32cubemx_utils/microros_static_library_ide/libmicroros/include/rcl/init.h \
  ../micro_ros_stm32cubemx_utils/microros_static_library_ide/libmicroros/include/rcl/allocator.h \
@@ -249,6 +252,9 @@ Core/Src/app_freertos.o: ../Core/Src/app_freertos.c \
 ../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_dma.h:
 ../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_dma_ex.h:
 ../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_cortex.h:
+../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_adc.h:
+../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_ll_adc.h:
+../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_adc_ex.h:
 ../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_exti.h:
 ../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_flash.h:
 ../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_flash_ex.h:
@@ -270,6 +276,7 @@ Core/Src/app_freertos.o: ../Core/Src/app_freertos.c \
 ../Core/Inc/iwdg.h:
 ../Core/Inc/gpio.h:
 ../Core/Inc/usart.h:
+../Core/Inc/adc.h:
 ../MPU6050/Src/mpu6050.h:
 ../micro_ros_stm32cubemx_utils/microros_static_library_ide/libmicroros/include/rcl/rcl.h:
 ../micro_ros_stm32cubemx_utils/microros_static_library_ide/libmicroros/include/rcl/init.h:

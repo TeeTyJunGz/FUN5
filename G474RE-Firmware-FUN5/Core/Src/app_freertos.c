@@ -30,6 +30,7 @@
 #include "iwdg.h"
 #include "gpio.h"
 #include "usart.h"
+#include "adc.h"
 
 #include <math.h>
 #include <string.h>
@@ -79,6 +80,14 @@ typedef struct {
 
 	double P[2][2];
 } KalmanFilter_t;
+
+typedef struct {
+	GPIO_PinState A;
+	GPIO_PinState B;
+	GPIO_PinState C;
+	GPIO_PinState D;
+	GPIO_PinState K;
+} controller_t;
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -128,6 +137,12 @@ KalmanFilter_t kalmanX, kalmanY;
 
 bool is_calib = false;
 bool on_calib = false;
+
+uint16_t ADCBuffer[80]={0};
+int ADC_Average[2] = {0};
+int ADC_SumAPot[2] = {0};
+
+controller_t joy;
 /* USER CODE END Variables */
 /* Definitions for defaultTask */
 osThreadId_t defaultTaskHandle;
@@ -160,6 +175,9 @@ void calculate_kalm_angles(double Ax, double Ay, double Az, double Gx, double Gy
 
 void Kalman_Init(KalmanFilter_t* kf);
 double Kalman_Angle(KalmanFilter_t* kf, double new_angle, double new_rate, float DT);
+
+void ADC_Averaged();
+void Read_Buttons();
 
 void calculate_gyro_angles(double Ax, double Ay, double Az, double Gx, double Gy, double Gz, float DT) {
 
@@ -264,7 +282,10 @@ void timer_callback(rcl_timer_t * timer, int64_t last_call_time)
 		uint32_t i2cError = HAL_I2C_GetError(&hi2c1);
 		if (i2cError == HAL_I2C_ERROR_NONE){
 			if (is_calib || on_calib){
+
 				MPU6050_Read_All(&hi2c1, &MPU6050);
+				ADC_Averaged();
+				Read_Buttons();
 
 				double Ax = (GRAVITY * MPU6050.Ax) - accl_offset.x;
 				double Ay = (GRAVITY * MPU6050.Ay) - accl_offset.y;
@@ -374,6 +395,30 @@ void imu_status_service_callback(const void * request_msg, void * response_msg){
 
 }
 
+void ADC_Averaged()
+{
+	for (int i = 0; i < 40; i++)
+	{
+		ADC_SumAPot[0] += ADCBuffer[2*i];
+		ADC_SumAPot[1] += ADCBuffer[1+(2*i)];
+	}
+
+	for (int i = 0; i < 2; i++)
+	{
+		ADC_Average[i] = ADC_SumAPot[i] / 40;
+		ADC_SumAPot[i] = 0;
+	}
+}
+
+void Read_Buttons()
+{
+	joy.A = HAL_GPIO_ReadPin(A_GPIO_Port, A_Pin);
+	joy.B = HAL_GPIO_ReadPin(B_GPIO_Port, B_Pin);
+	joy.C = HAL_GPIO_ReadPin(C_GPIO_Port, C_Pin);
+	joy.D = HAL_GPIO_ReadPin(D_GPIO_Port, D_Pin);
+	joy.K = HAL_GPIO_ReadPin(K_GPIO_Port, K_Pin);
+}
+
 /* USER CODE END FunctionPrototypes */
 
 void StartDefaultTask(void *argument);
@@ -390,6 +435,8 @@ void MX_FREERTOS_Init(void) {
   while (MPU6050_Init(&hi2c1) == 1);
   Kalman_Init(&kalmanX);
   Kalman_Init(&kalmanY);
+  HAL_ADCEx_Calibration_Start(&hadc1, ADC_SINGLE_ENDED);
+  HAL_ADC_Start_DMA(&hadc1, ADCBuffer, 80);
   /* USER CODE END Init */
 
   /* USER CODE BEGIN RTOS_MUTEX */

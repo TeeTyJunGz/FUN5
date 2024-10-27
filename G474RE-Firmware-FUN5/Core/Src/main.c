@@ -19,6 +19,7 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "cmsis_os.h"
+#include "adc.h"
 #include "dma.h"
 #include "i2c.h"
 #include "iwdg.h"
@@ -96,6 +97,7 @@ int main(void)
   MX_I2C1_Init();
   MX_LPUART1_UART_Init();
   MX_IWDG_Init();
+  MX_ADC1_Init();
   /* USER CODE BEGIN 2 */
 
   /* USER CODE END 2 */
