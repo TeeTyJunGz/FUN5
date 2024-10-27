@@ -132,13 +132,13 @@ class Kinematics(Node):
     def call_state_callback(self, request: StateScheduler, response: StateScheduler):
         
         srv = request.state
-        if srv == "Auto":
+        if srv == "AUT":
             self.call_random_function(True)
             self.state_srv = srv
             
             response.success = True
         
-        elif srv == "Teleop Based" or srv == "Teleop End Effector":
+        elif srv == "TOB" or srv == "TOE":
             self.state_srv = srv
             self.target_rc = True
 
@@ -176,13 +176,13 @@ class Kinematics(Node):
             error = self.target - current_pose
 
 
-            if self.state_srv == "Auto" or self.state_srv == "IPK":
+            if self.state_srv == "AUT" or self.state_srv == "IPK":
                 v_end_effector = self.Kp * error
                 
-            elif self.state_srv == "Teleop Based":
+            elif self.state_srv == "TOB":
                 v_end_effector = self.cmd_vel
                 
-            elif self.state_srv == "Teleop End Effector":
+            elif self.state_srv == "TOE":
                 T_e = robot.fkine(self.q)
                 R_e = T_e.R
                 v_end_effector = self.cmd_vel @ R_e
@@ -202,7 +202,7 @@ class Kinematics(Node):
                 self.get_logger().info(f"Near a singularity")
             
             
-            if np.linalg.norm(error) < 1e-3 and (self.state_srv != "Teleop Based" or self.state_srv != "Teleop End Effector"):
+            if np.linalg.norm(error) < 1e-3 and (self.state_srv != "TOB" or self.state_srv != "TOE"):
                 self.q_velocities.velocity = [0.0, 0.0, 0.0]
                 self.target_rc = False
                 

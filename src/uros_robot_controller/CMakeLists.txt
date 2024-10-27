@@ -27,9 +27,10 @@ ament_python_install_package(${PROJECT_NAME})
 
 # Install Python executables
 install(PROGRAMS
-  scripts/robot_controller.py
+  scripts/TargetBag.py
   scripts/kinematics.py
   scripts/robot_scheduler.py
+  scripts/robot_controller.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

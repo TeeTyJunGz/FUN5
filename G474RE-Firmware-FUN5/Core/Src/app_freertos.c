@@ -48,7 +48,9 @@
 #include <sensor_msgs/msg/imu.h>
 #include <geometry_msgs/msg/twist.h>
 
+#include <std_srvs/srv/trigger.h>
 #include <std_srvs/srv/set_bool.h>
+#include <robotic_interfaces/srv/keyboard.h>
 #include <imu_interfaces/srv/imu_calibration.h>
 
 #include <micro_ros_utilities/string_utilities.h>
@@ -95,6 +97,11 @@ typedef struct {
 #define GRAVITY 9.80665
 #define DEG_TO_RAD M_PI / 180.0
 #define RAD_TO_DEG 180.0 / M_PI
+
+#define ADC_MAX 4095.0f
+#define ADC_MIN 0.0f
+#define OUTPUT_MAX 1.0f
+#define OUTPUT_MIN -1.0f
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -120,10 +127,21 @@ rcl_service_t imu_status_server;
 std_srvs__srv__SetBool_Request imu_status_request;
 std_srvs__srv__SetBool_Response imu_status_response;
 
+rcl_client_t robot_controller_client;
+robotic_interfaces__srv__Keyboard_Request keyboard_request;
+robotic_interfaces__srv__Keyboard_Response keyboard_response;
+
+rcl_client_t robot_controller_Ref_client;
+robotic_interfaces__srv__Keyboard_Request ref_request;
+
+rcl_client_t robot_controller_saved_client;
+std_srvs__srv__Trigger_Request save_request;
+
 MPU6050_t MPU6050;
 uint16_t cc = 0;
 uint16_t cs = 0;
 uint16_t ct = 0;
+uint16_t cq = 0;
 
 offset3d_t accl_offset;
 offset3d_t gyro_offset;
@@ -143,6 +161,15 @@ int ADC_Average[2] = {0};
 int ADC_SumAPot[2] = {0};
 
 controller_t joy;
+
+int main_Mode = 0;
+uint8_t state_keep_B = 0;
+uint8_t B_count = 0;
+uint8_t state_keep_D = 0;
+uint8_t D_count = 0;
+uint8_t wait = 0;
+uint8_t auto_on = 0;
+uint8_t state_keep_K = 0;
 /* USER CODE END Variables */
 /* Definitions for defaultTask */
 osThreadId_t defaultTaskHandle;
@@ -178,6 +205,7 @@ double Kalman_Angle(KalmanFilter_t* kf, double new_angle, double new_rate, float
 
 void ADC_Averaged();
 void Read_Buttons();
+float map_adc_to_output(int adc_value);
 
 void calculate_gyro_angles(double Ax, double Ay, double Az, double Gx, double Gy, double Gz, float DT) {
 
@@ -275,65 +303,179 @@ double Kalman_Angle(KalmanFilter_t* kf, double new_angle, double new_rate, float
     return kf->angle;
 }
 
+float map_adc_to_output(int adc_value) {
+	float mapped = ((adc_value - ADC_MIN) * (OUTPUT_MAX - OUTPUT_MIN) / (ADC_MAX - ADC_MIN)) + OUTPUT_MIN;
+	float output = (fabs(mapped) < 0.03) ? 0.0 : mapped;
+	return output;
+}
+
 void timer_callback(rcl_timer_t * timer, int64_t last_call_time)
 {
 
 	if (timer != NULL) {
-		uint32_t i2cError = HAL_I2C_GetError(&hi2c1);
-		if (i2cError == HAL_I2C_ERROR_NONE){
-			if (is_calib || on_calib){
+		if (main_Mode == 1)
+		{
+			uint32_t i2cError = HAL_I2C_GetError(&hi2c1);
+			if (i2cError == HAL_I2C_ERROR_NONE){
+				if (is_calib || on_calib){
+					MPU6050_Read_All(&hi2c1, &MPU6050);
 
-				MPU6050_Read_All(&hi2c1, &MPU6050);
-				ADC_Averaged();
-				Read_Buttons();
+					double Ax = (GRAVITY * MPU6050.Ax) - accl_offset.x;
+					double Ay = (GRAVITY * MPU6050.Ay) - accl_offset.y;
+					double Az = (GRAVITY * MPU6050.Az) - accl_offset.z;
 
-				double Ax = (GRAVITY * MPU6050.Ax) - accl_offset.x;
-				double Ay = (GRAVITY * MPU6050.Ay) - accl_offset.y;
-				double Az = (GRAVITY * MPU6050.Az) - accl_offset.z;
+					double Gx = (DEG_TO_RAD * MPU6050.Gx) - gyro_offset.x;
+					double Gy = (DEG_TO_RAD * MPU6050.Gy) - gyro_offset.y;
+					double Gz = (DEG_TO_RAD * MPU6050.Gz) - gyro_offset.z;
 
-				double Gx = (DEG_TO_RAD * MPU6050.Gx) - gyro_offset.x;
-				double Gy = (DEG_TO_RAD * MPU6050.Gy) - gyro_offset.y;
-				double Gz = (DEG_TO_RAD * MPU6050.Gz) - gyro_offset.z;
+					mpu6050_msg.header.stamp.sec = rmw_uros_epoch_millis() / 1000;
+					mpu6050_msg.header.stamp.nanosec = rmw_uros_epoch_nanos();
 
-				mpu6050_msg.header.stamp.sec = rmw_uros_epoch_millis() / 1000;
-				mpu6050_msg.header.stamp.nanosec = rmw_uros_epoch_nanos();
+					mpu6050_msg.linear_acceleration.x = Ax;
+					mpu6050_msg.linear_acceleration.y = Ay;
+					mpu6050_msg.linear_acceleration.z = Az;
 
-				mpu6050_msg.linear_acceleration.x = Ax;
-				mpu6050_msg.linear_acceleration.y = Ay;
-				mpu6050_msg.linear_acceleration.z = Az;
+					mpu6050_msg.angular_velocity.x = Gx;
+					mpu6050_msg.angular_velocity.y = Gy;
+					mpu6050_msg.angular_velocity.z = Gz;
 
-				mpu6050_msg.angular_velocity.x = Gx;
-				mpu6050_msg.angular_velocity.y = Gy;
-				mpu6050_msg.angular_velocity.z = Gz;
+					rcl_ret_t ret = rcl_publish(&mpu6050_publisher, &mpu6050_msg, NULL);
+					if (ret != RCL_RET_OK) printf("Error publishing (line %d)\n", __LINE__);
 
-				rcl_ret_t ret = rcl_publish(&mpu6050_publisher, &mpu6050_msg, NULL);
-				if (ret != RCL_RET_OK) printf("Error publishing (line %d)\n", __LINE__);
+					rotation_real.roll = MPU6050.KalmanAngleX;
+					rotation_real.pitch = MPU6050.KalmanAngleY;
 
-				rotation_real.roll = MPU6050.KalmanAngleX;
-				rotation_real.pitch = MPU6050.KalmanAngleY;
+					calculate_gyro_angles(Ax/GRAVITY, Ay/GRAVITY, Az/GRAVITY, Gx, Gy, Gz, 0.01);
+					calculate_accl_angles(Ax/GRAVITY, Ay/GRAVITY, Az/GRAVITY, Gx, Gy, Gz, 0.01);
+					calculate_kalm_angles(Ax/GRAVITY, Ay/GRAVITY, Az/GRAVITY, Gx, Gy, Gz, 0.01);
 
-				calculate_gyro_angles(Ax/GRAVITY, Ay/GRAVITY, Az/GRAVITY, Gx, Gy, Gz, 0.01);
-				calculate_accl_angles(Ax/GRAVITY, Ay/GRAVITY, Az/GRAVITY, Gx, Gy, Gz, 0.01);
-				calculate_kalm_angles(Ax/GRAVITY, Ay/GRAVITY, Az/GRAVITY, Gx, Gy, Gz, 0.01);
+					cmd_vel_msg.linear.x = rotation_kalm.roll * DEG_TO_RAD;
+					cmd_vel_msg.angular.z = -(rotation_kalm.pitch * DEG_TO_RAD);
 
-				cmd_vel_msg.linear.x = rotation_kalm.roll * DEG_TO_RAD;
-				cmd_vel_msg.angular.z = -(rotation_kalm.pitch * DEG_TO_RAD);
+					rcl_ret_t rett = rcl_publish(&cmd_vel_publisher, &cmd_vel_msg, NULL);
+					if (rett != RCL_RET_OK) printf("Error publishing (line %d)\n", __LINE__);
 
-				rcl_ret_t rett = rcl_publish(&cmd_vel_publisher, &cmd_vel_msg, NULL);
-				if (rett != RCL_RET_OK) printf("Error publishing (line %d)\n", __LINE__);
-
+				}
+			}
+			else
+			{
+				static uint32_t timestamp = 0;
+				if (timestamp <= HAL_GetTick()){
+					timestamp = HAL_GetTick() + 1000;
+					HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
+					HAL_I2C_DeInit(&hi2c1);
+					HAL_I2C_Init(&hi2c1);
+					MPU6050_Init(&hi2c1);
+				}
 			}
 		}
-		else
+
+		else if (main_Mode == 0)
 		{
-			static uint32_t timestamp = 0;
-			if (timestamp <= HAL_GetTick()){
-				timestamp = HAL_GetTick() + 1000;
-				HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
-				HAL_I2C_DeInit(&hi2c1);
-				HAL_I2C_Init(&hi2c1);
-				MPU6050_Init(&hi2c1);
+			if (joy.B == GPIO_PIN_RESET && state_keep_B == 0)
+			{
+				wait++;
+				state_keep_B = 1;
+				state_keep_K = 0;
 			}
+
+			if (joy.B == GPIO_PIN_SET && state_keep_B == 1 && B_count == 0 && wait > 0)
+			{
+				keyboard_request.mode.data = "TOB";
+
+				int64_t sq_num;
+				rcl_ret_t ret = rcl_send_request(&robot_controller_client, &keyboard_request, &sq_num);
+
+				if (ret != RCL_RET_OK) cq++;
+
+				B_count = 1;
+				D_count = 0;
+				state_keep_B = 0;
+				state_keep_K = 0;
+			}
+
+			else if (joy.B == GPIO_PIN_SET && state_keep_B == 1 && B_count == 1 && wait >= 2)
+			{
+				keyboard_request.mode.data = "AUT";
+
+				int64_t sq_num;
+				rcl_ret_t ret = rcl_send_request(&robot_controller_client, &keyboard_request, &sq_num);
+
+				if (ret != RCL_RET_OK) cq++;
+
+				B_count = 0;
+				state_keep_B = 0;
+				state_keep_K = 0;
+			}
+
+			if (joy.D == GPIO_PIN_RESET)
+			{
+				wait++;
+				state_keep_D  = 1;
+				state_keep_K = 0;
+			}
+
+			if (joy.D == GPIO_PIN_SET && state_keep_D == 1 && B_count == 1 && D_count == 0 && wait > 2)
+			{
+				keyboard_request.mode.data = "TOE";
+
+				int64_t sq_numI;
+				rcl_ret_t ret = rcl_send_request(&robot_controller_client, &keyboard_request, &sq_numI);
+				if (ret != RCL_RET_OK) cq++;
+
+				int64_t sq_numII;
+				rcl_ret_t rett = rcl_send_request(&robot_controller_Ref_client, &keyboard_request, &sq_numII);
+				if (rett != RCL_RET_OK) cq++;
+
+				D_count = 1;
+				state_keep_D = 0;
+				state_keep_K = 0;
+			}
+
+			else if (joy.D == GPIO_PIN_SET && state_keep_D == 1 && B_count == 1 && D_count == 1 && wait > 2)
+			{
+				keyboard_request.mode.data = "TOB";
+
+				int64_t sq_numI;
+				rcl_ret_t ret = rcl_send_request(&robot_controller_client, &keyboard_request, &sq_numI);
+				if (ret != RCL_RET_OK) cq++;
+
+				int64_t sq_numII;
+				rcl_ret_t rett = rcl_send_request(&robot_controller_Ref_client, &keyboard_request, &sq_numII);
+				if (rett != RCL_RET_OK) cq++;
+
+				D_count = 0;
+				state_keep_D = 0;
+				state_keep_K = 0;
+			}
+
+			if (joy.K == GPIO_PIN_RESET)
+			{
+				wait++;
+				state_keep_K  = 1;
+			}
+
+			if (joy.K == GPIO_PIN_SET && state_keep_K == 1 && wait > 2)
+			{
+				int64_t sq_numI;
+				rcl_ret_t ret = rcl_send_request(&robot_controller_saved_client, &save_request, &sq_numI);
+				if (ret != RCL_RET_OK) cq++;
+
+				state_keep_K = 0;
+			}
+
+			ADC_Averaged();
+			Read_Buttons();
+
+			float zp = (joy.A == GPIO_PIN_SET) ? 0 : 0.2;
+			float zm = (joy.C == GPIO_PIN_SET) ? 0 : -0.2;
+
+			cmd_vel_msg.linear.x = (map_adc_to_output(ADC_Average[1])) * 0.2;
+			cmd_vel_msg.linear.y = (map_adc_to_output(ADC_Average[0])) * 0.2;
+			cmd_vel_msg.linear.z = zp + zm;
+
+			rcl_ret_t rett = rcl_publish(&cmd_vel_publisher, &cmd_vel_msg, NULL);
+			if (rett != RCL_RET_OK) printf("Error publishing (line %d)\n", __LINE__);
 		}
 
 	    HAL_IWDG_Refresh(&hiwdg);
@@ -417,6 +559,22 @@ void Read_Buttons()
 	joy.C = HAL_GPIO_ReadPin(C_GPIO_Port, C_Pin);
 	joy.D = HAL_GPIO_ReadPin(D_GPIO_Port, D_Pin);
 	joy.K = HAL_GPIO_ReadPin(K_GPIO_Port, K_Pin);
+}
+
+void keyboard_callback(const void * response_msg){
+  // Cast response message to expected type
+//  robotic_interfaces__srv__Keyboard_Response * msgin =
+//    (robotic_interfaces__srv__Keyboard_Response *) response_msg;
+
+}
+
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+	if (GPIO_Pin == GPIO_PIN_10)
+	{
+		if (main_Mode == 0) main_Mode = 1;
+		else if (main_Mode == 1) main_Mode = 0;
+	}
 }
 
 /* USER CODE END FunctionPrototypes */
@@ -525,6 +683,12 @@ void StartDefaultTask(void *argument)
 	const rosidl_service_type_support_t * imu_status_type_support =
 	  ROSIDL_GET_SRV_TYPE_SUPPORT(std_srvs, srv, SetBool);
 
+	const rosidl_service_type_support_t * keyboard_type_support =
+	  ROSIDL_GET_SRV_TYPE_SUPPORT(robotic_interfaces, srv, Keyboard);
+
+	const rosidl_service_type_support_t * trigger_type_support =
+	  ROSIDL_GET_SRV_TYPE_SUPPORT(std_srvs, srv, Trigger);
+
 	allocator = rcl_get_default_allocator();
 
 	executor = rclc_executor_get_zero_initialized_executor();
@@ -560,8 +724,11 @@ void StartDefaultTask(void *argument)
 	}
 
 	rclc_service_init_default(&imu_status_server, &node, imu_status_type_support, "imu/status");
-	//create service client
 
+	//create service client
+	rclc_client_init_default(&robot_controller_client, &node, keyboard_type_support, "Mode");
+	rclc_client_init_default(&robot_controller_Ref_client, &node, keyboard_type_support, "Ref");
+	rclc_client_init_default(&robot_controller_saved_client, &node, trigger_type_support, "SavePath");
 
 	//create executor
 	rclc_executor_init(&executor, &support.context, executor_num, &allocator);

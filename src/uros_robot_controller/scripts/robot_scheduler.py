@@ -11,7 +11,7 @@ class RobotSCHController(Node):
     def __init__(self):
         super().__init__('robot_scheduler')
 
-        self.create_service(Keyboard, "/robotKeyboard", self.keyboard_callback)
+        self.create_service(Keyboard, "/Mode", self.keyboard_callback)
         self.call_by_sch = self.create_client(StateScheduler, "state_sch")
 
         self.create_subscription(Bool, 'kinematics_Ready_State', self.kinematics_state_callback, 10)
@@ -89,15 +89,18 @@ class RobotSCHController(Node):
 
                 response.success = True
             
-        elif "Teleop" in srv.mode:
+        elif "TOB" in srv.mode or "TOE" in srv.mode:
             self.get_logger().info("Tele-operation Mode")
-            
+            if srv.mode == "TOB":
+                self.get_logger().info("Base Reference")
+            if srv.mode == "TOE":
+                self.get_logger().info("End Effector Reference")
             self.mode = srv.mode
             
             response.message = "Change mode to Tele-operation (Teleop) successfully"
             response.success = True
             
-        elif srv.mode == "Auto":
+        elif srv.mode == "AUT":
             self.get_logger().info("Autonomous Mode")
             self.kinematics_state = True
             self.mode = srv.mode
@@ -139,10 +142,10 @@ class RobotSCHController(Node):
             self.kinematics_state = False
             self.IPK = False
                         
-        elif self.mode == "Teleop Based" or self.mode == "Teleop End Effector":
+        elif self.mode == "TOB" or self.mode == "TOE":
             self.call_state_function(self.mode)
                         
-        elif self.mode == "Auto" and self.kinematics_state:
+        elif self.mode == "AUT" and self.kinematics_state:
             
             self.call_state_function(self.mode)
             self.kinematics_state = False

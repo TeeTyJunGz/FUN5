@@ -62,7 +62,7 @@ def generate_launch_description():
     
     
     package_name = 'uros_robot_controller'
-    executable_name = ['kinematics', 'robot_controller', 'robot_scheduler']
+    executable_name = ['kinematics', 'robot_controller', 'robot_scheduler', 'TargetBag']
     joint_name = ['joint_1', 'joint_2', 'joint_3']
         
     for i in range(len(executable_name)):
