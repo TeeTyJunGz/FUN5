@@ -102,6 +102,10 @@ typedef struct {
 #define ADC_MIN 0.0f
 #define OUTPUT_MAX 1.0f
 #define OUTPUT_MIN -1.0f
+
+#define ALPHA 0.50
+#define LOW_PASS_BETA 0.9
+#define HIGH_PASS_ALPHA 0.8
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -151,11 +155,13 @@ offset3d_t gyro_offset;
 
 rotation_t rotation_gyro;
 rotation_t rotation_accl;
+rotation_t rotation_comp;
 rotation_t rotation_kalm;
 rotation_t rotation_real;
 
 KalmanFilter_t kalmanX, kalmanY;
-
+double prev_acc_roll = 0, prev_acc_pitch = 0;
+double prev_gyroX = 0, prev_gyroY = 0;
 bool is_calib = false;
 bool on_calib = false;
 
@@ -199,8 +205,12 @@ void microros_deallocate(void * pointer, void * state);
 void * microros_reallocate(void * pointer, size_t size, void * state);
 void * microros_zero_allocate(size_t number_of_elements, size_t size_of_element, void * state);
 
+double lowPassFilter(float previousFiltered, float raw, float beta);
+double highPassFilter(float currentFiltered, float raw, float lastRaw, float alpha);
+
 void calculate_gyro_angles(double Ax, double Ay, double Az, double Gx, double Gy, double Gz, float DT);
 void calculate_accl_angles(double Ax, double Ay, double Az, double Gx, double Gy, double Gz, float DT);
+void calculate_comp_angles(double Ax, double Ay, double Az, double Gx, double Gy, double Gz, float DT);
 void calculate_kalm_angles(double Ax, double Ay, double Az, double Gx, double Gy, double Gz, float DT);
 
 void Kalman_Init(KalmanFilter_t* kf);
@@ -209,6 +219,13 @@ double Kalman_Angle(KalmanFilter_t* kf, double new_angle, double new_rate, float
 void ADC_Averaged();
 void Read_Buttons();
 float map_adc_to_output(int adc_value);
+
+double lowPassFilter(float previousFiltered, float raw, float beta) {
+    return beta * previousFiltered + (1.0 - beta) * raw;
+}
+double highPassFilter(float currentFiltered, float raw, float lastRaw, float alpha) {
+    return alpha * (currentFiltered + raw - lastRaw);
+}
 
 void calculate_gyro_angles(double Ax, double Ay, double Az, double Gx, double Gy, double Gz, float DT) {
 
@@ -226,7 +243,7 @@ void calculate_gyro_angles(double Ax, double Ay, double Az, double Gx, double Gy
 
 void calculate_accl_angles(double Ax, double Ay, double Az, double Gx, double Gy, double Gz, float DT) {
 
-    double roll_acc = atan2(Ay, Az) * RAD_TO_DEG;
+    double roll_acc = atan2(Ay, sqrt(Ax * Ax + Az * Az)) * RAD_TO_DEG;
     double pitch_acc = atan2(-Ax, sqrt(Ay * Ay + Az * Az)) * RAD_TO_DEG;
     double yaw_acc = (Gz * RAD_TO_DEG) * DT;
 
@@ -242,6 +259,37 @@ void calculate_accl_angles(double Ax, double Ay, double Az, double Gx, double Gy
     }
 }
 
+void calculate_comp_angles(double Ax, double Ay, double Az, double Gx, double Gy, double Gz, float DT){
+    double roll_acc = atan(Ay / sqrt(Ax * Ax + Az * Az)) * RAD_TO_DEG;
+    double pitch_acc = atan2(-Ax, sqrt(Ay * Ay + Az * Az)) * RAD_TO_DEG;
+
+    double roll_acc_fill = lowPassFilter(prev_acc_roll, roll_acc, LOW_PASS_BETA);
+    double pitch_acc_fill = lowPassFilter(prev_acc_pitch, pitch_acc, LOW_PASS_BETA);
+
+    prev_acc_roll = roll_acc_fill;
+    prev_acc_pitch = pitch_acc_fill;
+
+    double gyro_roll = rotation_comp.roll + Gx * DT;
+    double gyro_pitch = rotation_comp.pitch + Gy * DT;
+
+    double gyro_roll_fill = highPassFilter(rotation_comp.roll, gyro_roll, prev_gyroX, HIGH_PASS_ALPHA);
+    double gyro_pitch_fill = highPassFilter(rotation_comp.pitch, gyro_pitch, prev_gyroY, HIGH_PASS_ALPHA);
+
+    prev_gyroX = Gx;
+    prev_gyroY = Gy;
+
+    rotation_comp.roll = ALPHA * gyro_roll_fill + (1 - ALPHA) * roll_acc_fill;
+    rotation_comp.pitch = ALPHA * gyro_pitch_fill + (1 - ALPHA) * pitch_acc_fill;
+    rotation_comp.yaw += (Gz * RAD_TO_DEG) * DT;
+
+    if (rotation_comp.yaw > 180.0){
+    	rotation_comp.yaw -= 360.0;
+    }
+    else if (rotation_comp.yaw < -180.0){
+    	rotation_comp.yaw += 360.0;
+    }
+
+}
 void calculate_kalm_angles(double Ax, double Ay, double Az, double Gx, double Gy, double Gz, float DT) {
 
 	double angleX = atan(Ay / sqrt(Ax * Ax + Az * Az)) * RAD_TO_DEG;
@@ -349,10 +397,11 @@ void timer_callback(rcl_timer_t * timer, int64_t last_call_time)
 
 					calculate_gyro_angles(Ax/GRAVITY, Ay/GRAVITY, Az/GRAVITY, Gx, Gy, Gz, 0.01);
 					calculate_accl_angles(Ax/GRAVITY, Ay/GRAVITY, Az/GRAVITY, Gx, Gy, Gz, 0.01);
+					calculate_comp_angles(Ax/GRAVITY, Ay/GRAVITY, Az/GRAVITY, Gx, Gy, Gz, 0.01);
 					calculate_kalm_angles(Ax/GRAVITY, Ay/GRAVITY, Az/GRAVITY, Gx, Gy, Gz, 0.01);
 
-					cmd_vel_msg.linear.x = rotation_kalm.roll * DEG_TO_RAD;
-					cmd_vel_msg.angular.z = -(rotation_kalm.pitch * DEG_TO_RAD);
+					cmd_vel_msg.linear.x = rotation_comp.roll * DEG_TO_RAD;
+					cmd_vel_msg.angular.z = -(rotation_comp.pitch * DEG_TO_RAD);
 
 					rcl_ret_t rett = rcl_publish(&cmd_vel_publisher, &cmd_vel_msg, NULL);
 					if (rett != RCL_RET_OK) printf("Error publishing (line %d)\n", __LINE__);
@@ -636,8 +685,8 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 	if (GPIO_Pin == GPIO_PIN_10)
 	{
 		if (main_Mode == 0) main_Mode = 1;
-		else if (main_Mode == 1) main_Mode = 2;
-		else if (main_Mode == 2) main_Mode = 0;
+		else if (main_Mode == 1) main_Mode = 0;
+//		else if (main_Mode == 2) main_Mode = 0;
 	}
 }
 
@@ -657,6 +706,9 @@ void MX_FREERTOS_Init(void) {
   while (MPU6050_Init(&hi2c1) == 1);
   Kalman_Init(&kalmanX);
   Kalman_Init(&kalmanY);
+  rotation_comp.roll = 0;
+  rotation_comp.pitch = 0;
+  rotation_comp.yaw = 0;
   HAL_ADCEx_Calibration_Start(&hadc1, ADC_SINGLE_ENDED);
   HAL_ADC_Start_DMA(&hadc1, ADCBuffer, 80);
   /* USER CODE END Init */
@@ -774,7 +826,7 @@ void StartDefaultTask(void *argument)
 	// create publisher
 	rclc_publisher_init_best_effort(&mpu6050_publisher, &node, imu_type_support, "mpu6050_publisher");
 	rclc_publisher_init_default(&cmd_vel_publisher, &node, cmd_type_support, "cmd_vel");
-	rclc_publisher_init_default(&cmd_vell_publisher, &node, cmd_type_support, "cmd_vell");
+//	rclc_publisher_init_default(&cmd_vell_publisher, &node, cmd_type_support, "cmd_vell");
 	//create subscriber
 
 

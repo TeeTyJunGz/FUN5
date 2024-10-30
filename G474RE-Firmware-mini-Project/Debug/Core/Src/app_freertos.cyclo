@@ -1,0 +1,9 @@
+../Core/Src/app_freertos.c:195:7:map_adc_to_output	2
+../Core/Src/app_freertos.c:201:6:timer_callback	10
+../Core/Src/app_freertos.c:272:6:imu_calib_service_callback	1
+../Core/Src/app_freertos.c:299:6:imu_status_service_callback	3
+../Core/Src/app_freertos.c:326:6:ADC_Averaged	3
+../Core/Src/app_freertos.c:341:6:Read_Buttons	1
+../Core/Src/app_freertos.c:347:6:HAL_GPIO_EXTI_Callback	5
+../Core/Src/app_freertos.c:368:6:MX_FREERTOS_Init	2
+../Core/Src/app_freertos.c:412:6:StartDefaultTask	4
