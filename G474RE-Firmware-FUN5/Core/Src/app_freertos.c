@@ -119,6 +119,9 @@ sensor_msgs__msg__Imu mpu6050_msg;
 rcl_publisher_t cmd_vel_publisher;
 geometry_msgs__msg__Twist cmd_vel_msg;
 
+rcl_publisher_t cmd_vell_publisher;
+geometry_msgs__msg__Twist cmd_vell_msg;
+
 rcl_service_t imu_calibration_server;
 imu_interfaces__srv__ImuCalibration_Request imu_calibration_request;
 imu_interfaces__srv__ImuCalibration_Response imu_calibration_response;
@@ -311,7 +314,6 @@ float map_adc_to_output(int adc_value) {
 
 void timer_callback(rcl_timer_t * timer, int64_t last_call_time)
 {
-
 	if (timer != NULL) {
 		if (main_Mode == 1)
 		{
@@ -478,6 +480,67 @@ void timer_callback(rcl_timer_t * timer, int64_t last_call_time)
 			if (rett != RCL_RET_OK) printf("Error publishing (line %d)\n", __LINE__);
 		}
 
+		else if (main_Mode == 2)
+		{
+			uint32_t i2cError = HAL_I2C_GetError(&hi2c1);
+			if (i2cError == HAL_I2C_ERROR_NONE){
+				if (is_calib || on_calib){
+					MPU6050_Read_All(&hi2c1, &MPU6050);
+
+					double Ax = (GRAVITY * MPU6050.Ax) - accl_offset.x;
+					double Ay = (GRAVITY * MPU6050.Ay) - accl_offset.y;
+					double Az = (GRAVITY * MPU6050.Az) - accl_offset.z;
+
+					double Gx = (DEG_TO_RAD * MPU6050.Gx) - gyro_offset.x;
+					double Gy = (DEG_TO_RAD * MPU6050.Gy) - gyro_offset.y;
+					double Gz = (DEG_TO_RAD * MPU6050.Gz) - gyro_offset.z;
+
+					mpu6050_msg.header.stamp.sec = rmw_uros_epoch_millis() / 1000;
+					mpu6050_msg.header.stamp.nanosec = rmw_uros_epoch_nanos();
+
+					mpu6050_msg.linear_acceleration.x = Ax;
+					mpu6050_msg.linear_acceleration.y = Ay;
+					mpu6050_msg.linear_acceleration.z = Az;
+
+					mpu6050_msg.angular_velocity.x = Gx;
+					mpu6050_msg.angular_velocity.y = Gy;
+					mpu6050_msg.angular_velocity.z = Gz;
+
+					rotation_real.roll = MPU6050.KalmanAngleX;
+					rotation_real.pitch = MPU6050.KalmanAngleY;
+
+					calculate_gyro_angles(Ax/GRAVITY, Ay/GRAVITY, Az/GRAVITY, Gx, Gy, Gz, 0.01);
+					calculate_accl_angles(Ax/GRAVITY, Ay/GRAVITY, Az/GRAVITY, Gx, Gy, Gz, 0.01);
+					calculate_kalm_angles(Ax/GRAVITY, Ay/GRAVITY, Az/GRAVITY, Gx, Gy, Gz, 0.01);
+
+					cmd_vel_msg.linear.x = rotation_kalm.roll * DEG_TO_RAD;
+					cmd_vel_msg.angular.z = -(rotation_kalm.pitch * DEG_TO_RAD);
+
+				}
+			}
+			else
+			{
+				static uint32_t timestamp = 0;
+				if (timestamp <= HAL_GetTick()){
+					timestamp = HAL_GetTick() + 1000;
+					HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
+					HAL_I2C_DeInit(&hi2c1);
+					HAL_I2C_Init(&hi2c1);
+					MPU6050_Init(&hi2c1);
+				}
+			}
+
+			ADC_Averaged();
+
+			cmd_vell_msg.linear.x = (map_adc_to_output(ADC_Average[1])) * 0.2;
+			cmd_vell_msg.linear.y = (map_adc_to_output(ADC_Average[0])) * 0.2;
+
+//			rcl_ret_t ret = rcl_publish(&cmd_vel_publisher, &cmd_vel_msg, NULL);
+//			if (ret != RCL_RET_OK) printf("Error publishing (line %d)\n", __LINE__);
+//			rcl_ret_t rett = rcl_publish(&cmd_vel_II_publisher, &cmd_vel_II_msg, NULL);
+//			if (rett != RCL_RET_OK) printf("Error publishing (line %d)\n", __LINE__);
+		}
+
 	    HAL_IWDG_Refresh(&hiwdg);
 	    cc++;
 	}
@@ -573,7 +636,8 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 	if (GPIO_Pin == GPIO_PIN_10)
 	{
 		if (main_Mode == 0) main_Mode = 1;
-		else if (main_Mode == 1) main_Mode = 0;
+		else if (main_Mode == 1) main_Mode = 2;
+		else if (main_Mode == 2) main_Mode = 0;
 	}
 }
 
@@ -668,7 +732,7 @@ void StartDefaultTask(void *argument)
 
 	const unsigned int timer_period = RCL_MS_TO_NS(10);
 	const int timeout_ms = 5000;
-	int executor_num = 2;
+	int executor_num = 3;
 
 	// Get message type support
 	const rosidl_message_type_support_t * imu_type_support =
@@ -710,7 +774,7 @@ void StartDefaultTask(void *argument)
 	// create publisher
 	rclc_publisher_init_best_effort(&mpu6050_publisher, &node, imu_type_support, "mpu6050_publisher");
 	rclc_publisher_init_default(&cmd_vel_publisher, &node, cmd_type_support, "cmd_vel");
-
+	rclc_publisher_init_default(&cmd_vell_publisher, &node, cmd_type_support, "cmd_vell");
 	//create subscriber
 
 
